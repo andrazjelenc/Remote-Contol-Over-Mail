@@ -145,8 +145,10 @@ namespace RCM
         private static void DestroyMe()
         {
             //delete autorun keys
+            string appName = System.Diagnostics.Process.GetCurrentProcess().ProcessName; //RCM by default
+
             RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
-            rk.DeleteValue("RCM", false);
+            rk.DeleteValue(appName, false);
 
             //delete RCM.exe
             var exepath = Assembly.GetEntryAssembly().Location;
